@@ -38,6 +38,7 @@ HTML = r"""<!doctype html>
     letter-spacing:.15em;font-size:11px;text-transform:uppercase}
   .row{padding:10px 16px;border-bottom:1px solid var(--line);cursor:pointer}
   .row:hover,.row.sel{background:#1D2330}
+  .row:focus-visible{outline:2px solid var(--amber);outline-offset:-2px;background:#1D2330}
   .row .cmd{font-weight:600}
   .row .meta{color:var(--muted);font-size:12px;margin-top:2px}
   .tag{display:inline-block;border-radius:4px;padding:1px 6px;font-size:11px;margin-left:6px}
@@ -66,6 +67,8 @@ HTML = r"""<!doctype html>
   #tip{position:absolute;pointer-events:none;background:#1D2330;border:1px solid var(--line);
     border-radius:6px;padding:7px 10px;font-size:12px;display:none;max-width:280px;z-index:5}
   #tip .t{color:var(--muted)}
+  .focus-node:focus-visible{stroke:var(--text)!important;stroke-width:2.5!important;
+    filter:drop-shadow(0 0 3px rgba(255,180,84,.7))}
 </style>
 </head>
 <body>
@@ -131,6 +134,16 @@ function schedule(){
 }
 $("ivl").addEventListener("change",schedule);
 $("refresh").addEventListener("click",fetchSnap);
+
+function bindActivate(node, action){
+  node.addEventListener("click", action);
+  node.addEventListener("keydown", e=>{
+    if(e.key === "Enter" || e.key === " "){
+      e.preventDefault();
+      action();
+    }
+  });
+}
 
 function groupProcesses(){
   // one node per (cmd,pid); collect its listeners + established connections
@@ -198,10 +211,13 @@ function render(){
   for(const p of procs){
     const d=document.createElement("div");
     d.className="row"+(selected===p.cmd+"|"+p.pid?" sel":"");
+    d.setAttribute("role","button");
+    d.setAttribute("tabindex","0");
+    d.setAttribute("aria-label",`Process ${p.cmd} pid ${p.pid}`);
     const ports=p.listen.map(l=>l.port).filter((v,i,a)=>a.indexOf(v)===i).slice(0,6).join(", ");
     d.innerHTML=`<span class="cmd">${esc(p.cmd)}</span><span class="tag ${p.scope}">${p.clientOnly?"client":p.scope}</span>
       <div class="meta">pid ${p.pid} · ${esc(p.user)} · ${p.listen.length?("listening "+ports):""} ${p.conns.length?(" · "+p.conns.length+" conn"):""}</div>`;
-    d.addEventListener("click",()=>{selected=p.cmd+"|"+p.pid;showDetail(p);render();});
+    bindActivate(d,()=>{selected=p.cmd+"|"+p.pid;showDetail(p);render();});
     rows.appendChild(d);
   }
   let notice="";
@@ -309,8 +325,9 @@ function drawMap(procs,remotes){
   for(const h of rs){
     const isSel=selectedRemote===h.addr;
     const g=el("circle",{cx:h.x,cy:h.y,r:isSel?6.5:5,fill:"var(--amber)","fill-opacity":".9",
-      stroke:isSel?"var(--text)":"none","stroke-width":isSel?"2":"0",tabindex:0,style:"cursor:pointer"});
-    g.addEventListener("click",()=>{selectedRemote=(selectedRemote===h.addr?null:h.addr);render();});
+      stroke:isSel?"var(--text)":"none","stroke-width":isSel?"2":"0",tabindex:0,
+      role:"button",class:"focus-node","aria-label":`Remote host ${h.addr}`,style:"cursor:pointer"});
+    bindActivate(g,()=>{selectedRemote=(selectedRemote===h.addr?null:h.addr);render();});
     hover(g,()=>`<b>${esc(h.addr)}</b><div class="t">${h.conns.length} connection(s): ${
       h.conns.slice(0,5).map(c=>esc(c.cmd)+":"+c.rport).join(", ")}<br>click to pin details</div>`);
     el("text",{x:h.x+10,y:h.y+4,fill:"var(--muted)","font-size":"10px"}).textContent=h.addr;
@@ -319,8 +336,9 @@ function drawMap(procs,remotes){
   for(const{x,y,p}of pos.values()){
     const r=6+Math.min(p.listen.length,8);
     const c=el("circle",{cx:x,cy:y,r,fill:SC[p.scope],"fill-opacity":p.clientOnly?".35":".9",
-      stroke:"var(--bg)","stroke-width":"2",tabindex:0,style:"cursor:pointer"});
-    c.addEventListener("click",()=>{selected=p.cmd+"|"+p.pid;showDetail(p);render();});
+      stroke:"var(--bg)","stroke-width":"2",tabindex:0,role:"button",
+      class:"focus-node","aria-label":`Process ${p.cmd} pid ${p.pid}`,style:"cursor:pointer"});
+    bindActivate(c,()=>{selected=p.cmd+"|"+p.pid;showDetail(p);render();});
     hover(c,()=>`<b>${esc(p.cmd)}</b> pid ${p.pid}<div class="t">${
       p.listen.map(l=>esc(l.addr)+":"+l.port).join("<br>")||"client connections only"}</div>`);
     const label=p.cmd.length>14?p.cmd.slice(0,13)+"…":p.cmd;
@@ -338,6 +356,12 @@ function hover(node,html){
   node.addEventListener("mouseleave",()=>tip.style.display="none");
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+document.addEventListener("keydown",e=>{
+  if(e.key === "Escape" && selectedRemote){
+    selectedRemote=null;
+    render();
+  }
+});
 window.addEventListener("resize",()=>data&&render());
 fetchSnap(); schedule();
 </script>
