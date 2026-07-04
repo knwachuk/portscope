@@ -50,6 +50,15 @@ HTML = r"""<!doctype html>
   #detail table{width:100%;border-collapse:collapse;font-size:12px}
   #detail td{padding:3px 6px 3px 0;color:var(--muted);vertical-align:top}
   #detail td:first-child{color:var(--text);white-space:nowrap}
+  .remote-detail{position:absolute;left:16px;top:14px;max-width:360px;max-height:52%;overflow:auto;
+    color:var(--text);font-size:12px;line-height:1.45;background:rgba(15,17,23,.92);
+    border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:none;z-index:4}
+  .remote-detail h4{font-size:12px;letter-spacing:.08em;margin-bottom:6px;text-transform:uppercase;color:var(--muted)}
+  .remote-detail .host{font-size:13px;font-weight:600;color:var(--amber)}
+  .remote-detail .meta{color:var(--muted);margin-top:2px}
+  .remote-detail .section{margin-top:8px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;font-size:10px}
+  .remote-detail ul{margin-top:6px;padding-left:16px}
+  .remote-detail li{margin:2px 0}
   .legend{position:absolute;left:16px;bottom:14px;color:var(--muted);font-size:11px;line-height:1.8;
     background:rgba(15,17,23,.8);padding:8px 12px;border:1px solid var(--line);border-radius:8px}
   .legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px}
@@ -82,11 +91,12 @@ HTML = r"""<!doctype html>
 <main>
   <div id="map">
     <svg id="svg" role="img" aria-label="Network diagram of listening ports and connections"></svg>
+    <div id="remoteDetail" class="remote-detail"></div>
     <div class="legend">
       <i style="background:var(--steel)"></i>loopback only (this Mac)<br>
       <i style="background:var(--green)"></i>link-local (same network segment)<br>
       <i style="background:var(--rose)"></i>all interfaces (network-reachable)<br>
-      <i style="background:var(--amber)"></i>remote host (established)
+      <i style="background:var(--amber)"></i>remote host (established, click for details)
     </div>
     <div id="tip"></div>
   </div>
@@ -99,7 +109,7 @@ HTML = r"""<!doctype html>
 </main>
 <script>
 "use strict";
-let timer=null, data=null, selected=null;
+let timer=null, data=null, selected=null, selectedRemote=null;
 const $=id=>document.getElementById(id);
 const SC={loopback:"var(--steel)",linklocal:"var(--green)",lan:"var(--amber)",exposed:"var(--rose)"};
 const RANK={loopback:0,linklocal:1,lan:2,exposed:3};
@@ -142,15 +152,41 @@ function remoteHosts(){
   const m=new Map();
   for(const c of data.established){
     if(c.raddr.startsWith("127.")||c.raddr==="::1")continue; // local loop traffic stays in rings
-    if(!m.has(c.raddr))m.set(c.raddr,{addr:c.raddr,conns:[]});
-    m.get(c.raddr).conns.push(c);
+    if(!m.has(c.raddr))m.set(c.raddr,{
+      addr:c.raddr,conns:[],
+      procs:new Map(),localPorts:new Set(),remotePorts:new Set(),protos:new Set()
+    });
+    const host=m.get(c.raddr);
+    host.conns.push(c);
+    host.localPorts.add(c.lport);
+    host.remotePorts.add(c.rport);
+    host.protos.add(c.proto);
+    const pk=c.cmd+"|"+c.pid;
+    if(!host.procs.has(pk))host.procs.set(pk,{cmd:c.cmd,pid:c.pid,count:0});
+    host.procs.get(pk).count++;
   }
-  return [...m.values()];
+  return [...m.values()].map(h=>({
+    addr:h.addr,
+    conns:h.conns,
+    processes:[...h.procs.values()].sort((a,b)=>b.count-a.count),
+    localPorts:[...h.localPorts].sort((a,b)=>(+a||0)-(+b||0)),
+    remotePorts:[...h.remotePorts].sort((a,b)=>(+a||0)-(+b||0)),
+    protos:[...h.protos].sort(),
+  })).sort((a,b)=>b.conns.length-a.conns.length||a.addr.localeCompare(b.addr));
+}
+
+function remoteReachability(addr){
+  if(addr.startsWith("10.")||addr.startsWith("192.168."))return "private LAN";
+  if(/^172\.(1[6-9]|2\d|3[0-1])\./.test(addr))return "private LAN";
+  if(addr.toLowerCase().startsWith("fe80:"))return "link-local IPv6";
+  if(addr.toLowerCase().startsWith("fc")||addr.toLowerCase().startsWith("fd"))return "private ULA IPv6";
+  return "public or routed";
 }
 
 function render(){
   $("ts").textContent="checked "+data.ts;
   const procs=groupProcesses(), remotes=remoteHosts();
+  if(selectedRemote&&!remotes.some(r=>r.addr===selectedRemote))selectedRemote=null;
   const exposed=procs.filter(p=>p.scope==="exposed"||p.scope==="lan");
   $("nL").textContent=data.listeners.length;
   $("nE").textContent=exposed.length;
@@ -174,7 +210,45 @@ function render(){
     notice+='<div class="err">netstat sees listeners lsof missed: '+data.discrepancies.map(esc).join(", ")+'</div>';
   $("notice").innerHTML=notice;
 
+  renderRemoteDetail(remotes);
   drawMap(procs,remotes);
+}
+
+function renderRemoteDetail(remotes){
+  const box=$("remoteDetail");
+  if(!selectedRemote){
+    box.style.display="none";
+    box.innerHTML="";
+    return;
+  }
+  const host=remotes.find(r=>r.addr===selectedRemote);
+  if(!host){
+    box.style.display="none";
+    box.innerHTML="";
+    return;
+  }
+  const topProc=host.processes.slice(0,6).map(p=>
+    `<li>${esc(p.cmd)} <span style="color:var(--muted)">pid ${p.pid} · ${p.count} conn</span></li>`
+  ).join("");
+  const samples=host.conns.slice(0,8).map(c=>
+    `<li>${esc(c.cmd)} <span style="color:var(--muted)">${esc(c.laddr)}:${c.lport} → ${esc(c.raddr)}:${c.rport}</span></li>`
+  ).join("");
+  box.innerHTML=`
+    <h4>External Node</h4>
+    <div class="host">${esc(host.addr)}</div>
+    <div class="meta">${host.conns.length} active connection(s) · ${esc(remoteReachability(host.addr))}</div>
+    <div class="section">Protocols</div>
+    <div>${host.protos.map(esc).join(", ")||"unknown"}</div>
+    <div class="section">Remote Ports</div>
+    <div>${host.remotePorts.map(esc).join(", ")||"none"}</div>
+    <div class="section">Local Ports Used</div>
+    <div>${host.localPorts.map(esc).join(", ")||"none"}</div>
+    <div class="section">Top Local Processes</div>
+    <ul>${topProc||"<li>none</li>"}</ul>
+    <div class="section">Sample Flows</div>
+    <ul>${samples||"<li>none</li>"}</ul>
+  `;
+  box.style.display="block";
 }
 
 function showDetail(p){
@@ -233,9 +307,12 @@ function drawMap(procs,remotes){
 
   // remote nodes
   for(const h of rs){
-    const g=el("circle",{cx:h.x,cy:h.y,r:5,fill:"var(--amber)","fill-opacity":".9",tabindex:0});
+    const isSel=selectedRemote===h.addr;
+    const g=el("circle",{cx:h.x,cy:h.y,r:isSel?6.5:5,fill:"var(--amber)","fill-opacity":".9",
+      stroke:isSel?"var(--text)":"none","stroke-width":isSel?"2":"0",tabindex:0,style:"cursor:pointer"});
+    g.addEventListener("click",()=>{selectedRemote=(selectedRemote===h.addr?null:h.addr);render();});
     hover(g,()=>`<b>${esc(h.addr)}</b><div class="t">${h.conns.length} connection(s): ${
-      h.conns.slice(0,5).map(c=>esc(c.cmd)+":"+c.rport).join(", ")}</div>`);
+      h.conns.slice(0,5).map(c=>esc(c.cmd)+":"+c.rport).join(", ")}<br>click to pin details</div>`);
     el("text",{x:h.x+10,y:h.y+4,fill:"var(--muted)","font-size":"10px"}).textContent=h.addr;
   }
   // process nodes
