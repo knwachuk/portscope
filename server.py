@@ -7,12 +7,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 
-def _build_handler(html, snapshot_func, history_func=None):
+def _build_handler(html, history_html, snapshot_func, history_func=None):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             parsed = urlparse(self.path)
             if parsed.path == "/":
                 body = html.encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            elif parsed.path == "/history":
+                body = history_html.encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
@@ -50,10 +57,10 @@ def _build_handler(html, snapshot_func, history_func=None):
     return Handler
 
 
-def serve_local_dashboard(port, no_browser, snapshot_func, html, history_func=None):
+def serve_local_dashboard(port, no_browser, snapshot_func, html, history_html, history_func=None):
     """Start and run the local dashboard server."""
     addr = ("127.0.0.1", port)
-    handler = _build_handler(html, snapshot_func, history_func)
+    handler = _build_handler(html, history_html, snapshot_func, history_func)
     srv = ThreadingHTTPServer(addr, handler)
     url = f"http://127.0.0.1:{port}"
     print(f"PortScope running at {url}  (Ctrl-C to stop)")

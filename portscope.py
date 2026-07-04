@@ -25,6 +25,7 @@ import time
 
 from persistence import SnapshotStore
 from server import serve_local_dashboard
+from history_ui import HISTORY_HTML
 from ui import HTML
 
 # --------------------------------------------------------------------------
@@ -198,7 +199,14 @@ def main():
             return []
         return store.recent(limit)
 
-    serve_local_dashboard(args.port, args.no_browser, snapshot_with_persistence, HTML, history_reader)
+    serve_local_dashboard(
+        args.port,
+        args.no_browser,
+        snapshot_with_persistence,
+        HTML,
+        HISTORY_HTML,
+        history_reader,
+    )
 
 
 if __name__ == "__main__":

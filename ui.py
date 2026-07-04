@@ -89,6 +89,7 @@ HTML = r"""<!doctype html>
       <option value="300000">5 min</option>
     </select>
     <button id="refresh">Refresh now</button>
+    <button id="openHistory">History</button>
   </div>
 </header>
 <main>
@@ -120,13 +121,16 @@ const RANK={loopback:0,linklocal:1,lan:2,exposed:3};
 async function fetchSnap(){
   $("pulse").classList.remove("stale");
   try{
-    const r=await fetch("/api/snapshot"); data=await r.json();
+    const r=await fetch("/api/snapshot");
+    if(!r.ok)throw new Error("snapshot status "+r.status);
+    data=await r.json();
     render();
   }catch(e){
     $("pulse").classList.add("stale");
-    $("notice").innerHTML='<div class="err">Lost contact with portscope.py — is it still running?</div>';
+    $("notice").innerHTML='<div class="err">Lost contact with portscope.py — is it still running? '+esc(e.message||"")+'</div>';
   }
 }
+
 function schedule(){
   if(timer)clearInterval(timer); timer=null;
   const ms=+$("ivl").value;
@@ -134,6 +138,7 @@ function schedule(){
 }
 $("ivl").addEventListener("change",schedule);
 $("refresh").addEventListener("click",fetchSnap);
+$("openHistory").addEventListener("click",()=>{window.location.href="/history";});
 
 function bindActivate(node, action){
   node.addEventListener("click", action);

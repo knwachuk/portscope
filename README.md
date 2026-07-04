@@ -101,11 +101,12 @@ Hover any node for its full address:port list; click it (or its row in the side 
 - **check every** — polling interval: manually, 5 s, 15 s, 30 s, 60 s, or 5 min. Each check re-runs the commands fresh; nothing is cached or written to disk.
 - **Refresh now** — immediate one-off check, regardless of interval.
 - **External nodes** — click an amber remote host dot to pin details in the left map card; click again to clear.
+- **History page** — use the `History` button in the header (or open `/history`) for a dedicated timeline view of persisted snapshots.
 - Header counters show total listeners, network-reachable processes, and established connections at a glance.
 
 ### Keyboard controls
 
-- `Tab` / `Shift+Tab` moves focus through process rows, process nodes, and remote host nodes.
+- `Tab` / `Shift+Tab` moves focus through process rows, process nodes, and remote host nodes on the live map page.
 - `Enter` or `Space` activates the focused item (same as clicking).
 - `Escape` clears a pinned external-node card.
 
