@@ -61,7 +61,7 @@ Flag meanings: `-n` skips DNS lookups (raw IPs), `-P` shows numeric ports instea
 - **Center** — your machine.
 - **Inner ring (steel blue / green)** — processes whose listeners are bound only to `127.0.0.1`, `::1`, or link-local addresses. Nothing outside this Mac (or its network segment, for link-local) can reach them.
 - **Outer ring (red / amber)** — processes bound to `*`, `0.0.0.0`, `::`, or a specific LAN IP. **Any device on your network can attempt to connect to these.** This ring should be as empty as you can make it.
-- **Amber dots on the right** — remote hosts with established connections, with curved lines back to the local process talking to them. Loopback-to-loopback traffic is omitted to keep the picture clean.
+- **Amber dots on the right** — remote hosts with established connections, with curved lines back to the local process talking to them. Click a remote host to pin an external-node detail card on the left of the map (ports, protocols, top local processes, and sample flows). Loopback-to-loopback traffic is omitted to keep the picture clean.
 - **Node size** — scales with how many ports the process holds.
 - **Faded nodes** — client-only processes (outbound connections, no listeners).
 
@@ -82,7 +82,14 @@ Hover any node for its full address:port list; click it (or its row in the side 
 
 - **check every** — polling interval: manually, 5 s, 15 s, 30 s, 60 s, or 5 min. Each check re-runs the commands fresh; nothing is cached or written to disk.
 - **Refresh now** — immediate one-off check, regardless of interval.
+- **External nodes** — click an amber remote host dot to pin details in the left map card; click again to clear.
 - Header counters show total listeners, network-reachable processes, and established connections at a glance.
+
+### Keyboard controls
+
+- `Tab` / `Shift+Tab` moves focus through process rows, process nodes, and remote host nodes.
+- `Enter` or `Space` activates the focused item (same as clicking).
+- `Escape` clears a pinned external-node card.
 
 ---
 
@@ -109,7 +116,7 @@ Worth a second look when they appear on the **outer ring**:
 
 - The dashboard server binds to `127.0.0.1` only — PortScope never adds itself to your exposed surface.
 - No data leaves your machine. No logging, no telemetry, no disk writes.
-- Single file, stdlib only — audit it in five minutes.
+- Stdlib only — easy to audit and run anywhere Python 3.8+ is available.
 
 ---
 
