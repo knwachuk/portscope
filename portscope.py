@@ -23,6 +23,7 @@ import re
 import subprocess
 import time
 
+from persistence import SnapshotStore
 from server import serve_local_dashboard
 from ui import HTML
 
@@ -125,6 +126,7 @@ def parse_netstat_listen(text):
 
 
 def snapshot():
+    now = time.time()
     listeners = parse_lsof(run("lsof -nP -iTCP -sTCP:LISTEN"), "LISTEN")
     established = parse_lsof(run("lsof -nP -iTCP -sTCP:ESTABLISHED"), "ESTABLISHED")
     netstat_rows = parse_netstat_listen(run("netstat -anv -p tcp"))
@@ -136,7 +138,8 @@ def snapshot():
     )
 
     return {
-        "ts": time.strftime("%H:%M:%S"),
+        "ts": time.strftime("%H:%M:%S", time.localtime(now)),
+        "epoch": int(now),
         "root": os.geteuid() == 0 if hasattr(os, "geteuid") else True,
         "listeners": listeners,
         "established": established,
@@ -154,13 +157,48 @@ def main():
     ap = argparse.ArgumentParser(description="PortScope — local port & connection map")
     ap.add_argument("--port", type=int, default=8765, help="dashboard port (default 8765)")
     ap.add_argument("--no-browser", action="store_true", help="don't auto-open the browser")
+    ap.add_argument(
+        "--data-dir",
+        default=None,
+        help="storage directory for persistent scan history (platform default if omitted)",
+    )
+    ap.add_argument(
+        "--history-limit",
+        type=int,
+        default=2000,
+        help="max persisted snapshots to keep (default 2000)",
+    )
+    ap.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="disable persistent scan history",
+    )
     args = ap.parse_args()
 
     if hasattr(os, "geteuid") and os.geteuid() != 0:
         print("⚠  Not running as root — processes owned by other users will be invisible.")
         print("   For the full picture run:  sudo python3 portscope.py\n")
 
-    serve_local_dashboard(args.port, args.no_browser, snapshot, HTML)
+    store = None
+    if not args.no_persist:
+        store = SnapshotStore.from_data_dir(
+            data_dir=args.data_dir,
+            max_rows=args.history_limit,
+        )
+        print(f"Persisting scan history at {store.db_path}")
+
+    def snapshot_with_persistence():
+        snap = snapshot()
+        if store is not None:
+            store.save(snap)
+        return snap
+
+    def history_reader(limit):
+        if store is None:
+            return []
+        return store.recent(limit)
+
+    serve_local_dashboard(args.port, args.no_browser, snapshot_with_persistence, HTML, history_reader)
 
 
 if __name__ == "__main__":

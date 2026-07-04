@@ -20,6 +20,9 @@ Your browser opens `http://127.0.0.1:8765` automatically. Press `Ctrl-C` in the 
 |---|---|---|
 | `--port N` | `8765` | Dashboard port |
 | `--no-browser` | off | Don't auto-open the browser |
+| `--data-dir PATH` | platform default | Where persistent scan history is stored |
+| `--history-limit N` | `2000` | Maximum saved snapshots retained |
+| `--no-persist` | off | Disable persistence entirely |
 
 ### Why sudo?
 
@@ -40,6 +43,21 @@ netstat -anv -p tcp                # independent cross-check of listeners
 Flag meanings: `-n` skips DNS lookups (raw IPs), `-P` shows numeric ports instead of service names, `-iTCP` restricts to TCP sockets, `-sTCP:<state>` filters by socket state.
 
 **The netstat cross-check matters.** If `netstat` reports a listening port that `lsof` cannot see, PortScope flags the discrepancy in red. The two tools use different kernel interfaces, and a mismatch between them is a classic indicator of a process hiding itself (rootkit behavior). On a healthy machine this list is always empty.
+
+## Persistence (OS-agnostic)
+
+PortScope now persists each collected snapshot to a local SQLite database using platform-native user data paths:
+
+- macOS: `~/Library/Application Support/portscope/history.sqlite3`
+- Linux: `$XDG_DATA_HOME/portscope/history.sqlite3` or `~/.local/share/portscope/history.sqlite3`
+- Windows: `%APPDATA%\\portscope\\history.sqlite3`
+
+History is rotation-limited (`--history-limit`) and never leaves your machine.
+
+### History API
+
+- `GET /api/history?limit=50` returns the most recent persisted snapshots.
+- The response format is `{ "items": [ ... ] }`.
 
 ---
 
